@@ -36,32 +36,32 @@ export function Sidebar() {
   return (
     <div className={`
       ${isCollapsed ? 'w-16' : 'w-64'} 
-      bg-[#0C0F1A] border-r border-[#00FFFF]/20 
+      bg-background-primary border-r border-primary-500/20 
       transition-all duration-300 ease-in-out
       flex flex-col h-full
       relative
     `}>
       {/* Header */}
-      <div className="p-6 border-b border-[#00FFFF]/20">
+      <div className="p-6 border-b border-primary-500/20">
         <div className="flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex flex-col">
               <h1 className="font-orbitron text-xl font-bold gradient-text">
                 IMPACT REALTY
               </h1>
-              <p className="text-[#00CED1] text-xs font-medium tracking-wider">
+              <p className="text-secondary-500 text-xs font-medium tracking-wider">
                 AGENT PLATFORM
               </p>
             </div>
           )}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-2 rounded-lg hover:bg-[#00FFFF]/10 transition-colors"
+            className="p-2 rounded-lg hover:bg-primary-500/10 transition-colors"
           >
             {isCollapsed ? (
-              <ChevronRight className="w-4 h-4 text-[#00FFFF]" />
+              <ChevronRight className="w-4 h-4 text-primary-500" />
             ) : (
-              <ChevronLeft className="w-4 h-4 text-[#00FFFF]" />
+              <ChevronLeft className="w-4 h-4 text-primary-500" />
             )}
           </button>
         </div>
@@ -78,26 +78,19 @@ export function Sidebar() {
               key={item.path}
               href={item.path}
               className={`
-                flex items-center gap-3 px-3 py-3 rounded-lg
-                transition-all duration-200 group
-                ${isActive 
-                  ? 'bg-[#00FFFF]/20 border border-[#00FFFF]/50 text-[#00FFFF]' 
-                  : 'hover:bg-[#00FFFF]/10 text-gray-300 hover:text-[#00FFFF]'
-                }
+                nav-item
+                ${isActive ? 'active' : ''}
                 ${isCollapsed ? 'justify-center' : ''}
               `}
             >
-              <Icon className={`
-                w-5 h-5 transition-colors
-                ${isActive ? 'text-[#00FFFF]' : 'group-hover:text-[#00FFFF]'}
-              `} />
+              <Icon className="w-5 h-5" />
               {!isCollapsed && (
                 <span className="font-medium tracking-wide">
                   {item.label}
                 </span>
               )}
               {isActive && !isCollapsed && (
-                <div className="ml-auto w-2 h-2 bg-[#00FFFF] rounded-full animate-pulse-glow" />
+                <div className="ml-auto status-indicator status-active" />
               )}
             </Link>
           )
@@ -105,12 +98,12 @@ export function Sidebar() {
       </nav>
 
       {/* Status Indicator */}
-      <div className="p-4 border-t border-[#00FFFF]/20">
+      <div className="p-4 border-t border-primary-500/20">
         <div className={`
-          flex items-center gap-3 p-3 rounded-lg bg-[#00FFFF]/5
+          flex items-center gap-3 p-3 rounded-lg bg-primary-500/5
           ${isCollapsed ? 'justify-center' : ''}
         `}>
-          <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
+          <div className="status-indicator status-active" />
           {!isCollapsed && (
             <div className="flex flex-col">
               <span className="text-xs font-medium text-green-400">

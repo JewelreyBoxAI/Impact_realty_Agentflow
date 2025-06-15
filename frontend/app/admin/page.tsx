@@ -2,108 +2,96 @@
 
 import React, { useState, useEffect } from 'react'
 import { AdminConfigPanel } from '@/components/AdminConfigPanel'
-import { supabaseClient } from '@/utils/supabaseClient'
+import { KPIWidget } from '@/components/KPIWidget'
 import { mcpRouter } from '@/utils/mcpRouter'
-
-interface SystemHealth {
-  database: 'healthy' | 'warning' | 'error'
-  agents: 'healthy' | 'warning' | 'error'
-  mcp: 'healthy' | 'warning' | 'error'
-  integrations: 'healthy' | 'warning' | 'error'
-}
+import { Settings, Server, Database, Shield, Users, Activity } from 'lucide-react'
 
 export default function AdminPage() {
-  const [systemHealth, setSystemHealth] = useState<SystemHealth>({
-    database: 'healthy',
-    agents: 'healthy',
-    mcp: 'healthy',
-    integrations: 'healthy'
-  })
   const [loading, setLoading] = useState(true)
-  const [agentStatuses, setAgentStatuses] = useState<any[]>([])
+  const [systemStats, setSystemStats] = useState({
+    uptime: '99.8%',
+    totalUsers: 12,
+    activeConnections: 8,
+    systemLoad: 23
+  })
 
   useEffect(() => {
-    loadSystemStatus()
-    const interval = setInterval(loadSystemStatus, 30000) // Refresh every 30 seconds
+    loadSystemStats()
+    const interval = setInterval(loadSystemStats, 30000)
     return () => clearInterval(interval)
   }, [])
 
-  const loadSystemStatus = async () => {
+  const loadSystemStats = async () => {
     try {
-      // Check agent statuses
-      const agents = await supabaseClient.getAgentStatuses()
-      setAgentStatuses(agents)
-
-      // Check MCP health
-      const healthCheck = await mcpRouter.healthCheck()
-      
-      // Determine system health
-      const agentHealth = agents.every(agent => agent.status === 'active') ? 'healthy' : 'warning'
-      const mcpHealth = Object.values(healthCheck).every(result => result.success) ? 'healthy' : 'warning'
-
-      setSystemHealth({
-        database: 'healthy', // Assume healthy if we got data
-        agents: agentHealth,
-        mcp: mcpHealth,
-        integrations: 'healthy' // Mock for now
+      // In a real implementation, this would fetch actual system metrics
+      setSystemStats({
+        uptime: '99.8%',
+        totalUsers: 12,
+        activeConnections: 8,
+        systemLoad: Math.floor(Math.random() * 50) + 10
       })
     } catch (error) {
-      console.error('Failed to load system status:', error)
-      setSystemHealth({
-        database: 'error',
-        agents: 'error',
-        mcp: 'error',
-        integrations: 'error'
-      })
+      console.error('Failed to load system stats:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const restartAgent = async (agentId: string) => {
+  const handleSaveConfig = async (config: any) => {
     try {
-      const result = await mcpRouter.invokeAgent('supervisor', {
-        action: 'restart_agent',
-        agent_id: agentId
+      const result = await mcpRouter.executeWorkflow('update_system_config', {
+        config,
+        priority: 'high'
       })
+      
       if (result.success) {
-        console.log('Agent restarted:', result.data)
-        loadSystemStatus() // Refresh
+        console.log('Configuration saved:', result.data)
       }
     } catch (error) {
-      console.error('Failed to restart agent:', error)
+      console.error('Failed to save configuration:', error)
     }
   }
 
-  const runSystemDiagnostics = async () => {
+  const handleResetConfig = async () => {
     try {
-      const result = await mcpRouter.invokeAgent('supervisor', {
-        action: 'system_diagnostics',
-        full_scan: true
+      const result = await mcpRouter.executeWorkflow('reset_system_config', {
+        priority: 'high'
       })
+      
       if (result.success) {
-        console.log('System diagnostics completed:', result.data)
-        loadSystemStatus()
+        console.log('Configuration reset:', result.data)
       }
     } catch (error) {
-      console.error('Failed to run diagnostics:', error)
+      console.error('Failed to reset configuration:', error)
     }
   }
 
-  const emergencyShutdown = async () => {
-    if (confirm('Are you sure you want to perform an emergency shutdown? This will stop all agents.')) {
-      try {
-        const result = await mcpRouter.invokeAgent('supervisor', {
-          action: 'emergency_shutdown',
-          reason: 'admin_initiated'
-        })
-        if (result.success) {
-          console.log('Emergency shutdown initiated:', result.data)
-          loadSystemStatus()
-        }
-      } catch (error) {
-        console.error('Failed to initiate emergency shutdown:', error)
+  const restartSystem = async () => {
+    try {
+      const result = await mcpRouter.executeWorkflow('system_restart', {
+        priority: 'critical'
+      })
+      
+      if (result.success) {
+        console.log('System restart initiated:', result.data)
       }
+    } catch (error) {
+      console.error('Failed to restart system:', error)
+    }
+  }
+
+  const backupSystem = async () => {
+    try {
+      const result = await mcpRouter.executeWorkflow('system_backup', {
+        type: 'full',
+        priority: 'high'
+      })
+      
+      if (result.success) {
+        console.log('System backup initiated:', result.data)
+      }
+    } catch (error) {
+      console.error('Failed to backup system:', error)
     }
   }
 
@@ -111,191 +99,196 @@ export default function AdminPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="w-12 h-12 border-2 border-[#00FFFF] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-[#00FFFF] font-orbitron">Loading System Status...</p>
+          <div className="loading-spinner mx-auto mb-4" />
+          <p className="text-primary-500 font-orbitron">Loading Admin Panel...</p>
         </div>
       </div>
     )
   }
 
-  const getHealthColor = (status: string) => {
-    switch (status) {
-      case 'healthy': return 'text-green-400'
-      case 'warning': return 'text-yellow-400'
-      case 'error': return 'text-red-400'
-      default: return 'text-gray-400'
-    }
-  }
-
-  const getHealthIcon = (status: string) => {
-    switch (status) {
-      case 'healthy': return '●'
-      case 'warning': return '▲'
-      case 'error': return '✕'
-      default: return '○'
-    }
-  }
-
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="section-header">
         <div>
-          <h1 className="font-orbitron text-3xl font-bold gradient-text">
-            ADMIN CONTROL
+          <h1 className="section-title">
+            SYSTEM ADMINISTRATION
           </h1>
-          <p className="text-gray-400 mt-2">
-            System configuration and agent management
+          <p className="section-subtitle">
+            System configuration and management tools
           </p>
         </div>
         <div className="flex gap-4">
           <button 
-            onClick={runSystemDiagnostics}
-            className="neon-button px-6 py-3 rounded-lg font-medium"
+            onClick={backupSystem}
+            className="bg-blue-500/20 border border-blue-500 text-blue-400 px-6 py-3 rounded-lg font-medium hover:bg-blue-500/30 transition-colors"
           >
-            SYSTEM DIAGNOSTICS
+            BACKUP SYSTEM
           </button>
           <button 
-            onClick={emergencyShutdown}
+            onClick={restartSystem}
             className="bg-red-500/20 border border-red-500 text-red-400 px-6 py-3 rounded-lg font-medium hover:bg-red-500/30 transition-colors"
           >
-            EMERGENCY STOP
+            RESTART SYSTEM
           </button>
         </div>
       </div>
 
-      {/* System Health Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className={`text-3xl font-orbitron font-bold mb-2 ${getHealthColor(systemHealth.database)}`}>
-              {getHealthIcon(systemHealth.database)}
-            </div>
-            <div className="text-sm text-gray-400">Database</div>
-            <div className={`text-xs mt-1 ${getHealthColor(systemHealth.database)}`}>
-              {systemHealth.database.toUpperCase()}
-            </div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className={`text-3xl font-orbitron font-bold mb-2 ${getHealthColor(systemHealth.agents)}`}>
-              {getHealthIcon(systemHealth.agents)}
-            </div>
-            <div className="text-sm text-gray-400">Agents</div>
-            <div className={`text-xs mt-1 ${getHealthColor(systemHealth.agents)}`}>
-              {systemHealth.agents.toUpperCase()}
-            </div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className={`text-3xl font-orbitron font-bold mb-2 ${getHealthColor(systemHealth.mcp)}`}>
-              {getHealthIcon(systemHealth.mcp)}
-            </div>
-            <div className="text-sm text-gray-400">MCP Gateway</div>
-            <div className={`text-xs mt-1 ${getHealthColor(systemHealth.mcp)}`}>
-              {systemHealth.mcp.toUpperCase()}
-            </div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className={`text-3xl font-orbitron font-bold mb-2 ${getHealthColor(systemHealth.integrations)}`}>
-              {getHealthIcon(systemHealth.integrations)}
-            </div>
-            <div className="text-sm text-gray-400">Integrations</div>
-            <div className={`text-xs mt-1 ${getHealthColor(systemHealth.integrations)}`}>
-              {systemHealth.integrations.toUpperCase()}
-            </div>
-          </div>
-        </div>
+      {/* System Overview */}
+      <div className="stats-grid">
+        <KPIWidget
+          title="System Uptime"
+          value={systemStats.uptime}
+          icon={<Server className="w-5 h-5" />}
+          color="success"
+        />
+        <KPIWidget
+          title="Total Users"
+          value={systemStats.totalUsers}
+          icon={<Users className="w-5 h-5" />}
+          color="primary"
+        />
+        <KPIWidget
+          title="Active Connections"
+          value={systemStats.activeConnections}
+          icon={<Activity className="w-5 h-5" />}
+          color="success"
+        />
+        <KPIWidget
+          title="System Load"
+          value={systemStats.systemLoad}
+          format="percentage"
+          trend={systemStats.systemLoad > 70 ? 'up' : 'stable'}
+          icon={<Database className="w-5 h-5" />}
+          color={systemStats.systemLoad > 70 ? 'warning' : 'success'}
+        />
       </div>
-
-      {/* Agent Management */}
-      <div className="card-bg rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-orbitron text-lg font-semibold text-white">
-            AGENT MANAGEMENT
-          </h3>
-          <button 
-            onClick={loadSystemStatus}
-            className="text-[#00FFFF] hover:text-[#00CED1] text-sm font-medium"
-          >
-            REFRESH STATUS
-          </button>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {agentStatuses.map((agent) => (
-            <div key={agent.id} className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${agent.status === 'active' ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
-                  <span className="font-medium text-white">{agent.name}</span>
-                </div>
-                <span className="text-xs text-gray-400">{agent.type}</span>
-              </div>
-              
-              <div className="space-y-2 text-sm text-gray-300">
-                <div>Status: <span className={getHealthColor(agent.status === 'active' ? 'healthy' : 'warning')}>{agent.status}</span></div>
-                <div>Tasks: {agent.tasksCompleted}</div>
-                <div>Success Rate: {agent.successRate}%</div>
-                <div>Last Activity: {agent.lastActivity}</div>
-              </div>
-              
-              <div className="flex gap-2 mt-4">
-                <button 
-                  onClick={() => restartAgent(agent.id)}
-                  className="flex-1 text-xs py-2 px-3 rounded bg-[#00FFFF]/20 text-[#00FFFF] hover:bg-[#00FFFF]/30 transition-colors"
-                >
-                  RESTART
-                </button>
-                <button 
-                  onClick={() => mcpRouter.getAgentStatus(agent.name.toLowerCase())}
-                  className="flex-1 text-xs py-2 px-3 rounded bg-gray-600/20 text-gray-400 hover:bg-gray-600/30 transition-colors"
-                >
-                  DETAILS
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Admin Configuration Panel */}
-      <AdminConfigPanel />
 
       {/* Quick Actions */}
-      <div className="card-bg rounded-2xl p-6">
-        <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <Settings className="w-5 h-5 text-primary-500" />
           QUICK ACTIONS
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button 
-            onClick={runSystemDiagnostics}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Full Diagnostics</div>
-          </button>
-          <button 
-            onClick={() => loadSystemStatus()}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Refresh Status</div>
-          </button>
-          <button 
-            onClick={() => mcpRouter.invokeAgent('supervisor', { action: 'backup_system' })}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Backup System</div>
-          </button>
-          <button 
-            onClick={() => mcpRouter.invokeAgent('supervisor', { action: 'clear_cache' })}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Clear Cache</div>
-          </button>
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="card-bg rounded-2xl p-6 text-center">
+            <Server className="w-8 h-8 text-blue-400 mx-auto mb-3" />
+            <h3 className="font-orbitron font-semibold text-white mb-2">System Status</h3>
+            <p className="text-sm text-gray-400 mb-4">Monitor system health and performance</p>
+            <button className="w-full bg-blue-500/20 border border-blue-500 text-blue-400 py-2 px-4 rounded-lg font-medium hover:bg-blue-500/30 transition-colors">
+              VIEW STATUS
+            </button>
+          </div>
+
+          <div className="card-bg rounded-2xl p-6 text-center">
+            <Database className="w-8 h-8 text-green-400 mx-auto mb-3" />
+            <h3 className="font-orbitron font-semibold text-white mb-2">Database</h3>
+            <p className="text-sm text-gray-400 mb-4">Manage database connections and queries</p>
+            <button className="w-full bg-green-500/20 border border-green-500 text-green-400 py-2 px-4 rounded-lg font-medium hover:bg-green-500/30 transition-colors">
+              MANAGE DB
+            </button>
+          </div>
+
+          <div className="card-bg rounded-2xl p-6 text-center">
+            <Shield className="w-8 h-8 text-yellow-400 mx-auto mb-3" />
+            <h3 className="font-orbitron font-semibold text-white mb-2">Security</h3>
+            <p className="text-sm text-gray-400 mb-4">Configure security settings and policies</p>
+            <button className="w-full bg-yellow-500/20 border border-yellow-500 text-yellow-400 py-2 px-4 rounded-lg font-medium hover:bg-yellow-500/30 transition-colors">
+              SECURITY
+            </button>
+          </div>
+
+          <div className="card-bg rounded-2xl p-6 text-center">
+            <Users className="w-8 h-8 text-purple-400 mx-auto mb-3" />
+            <h3 className="font-orbitron font-semibold text-white mb-2">User Management</h3>
+            <p className="text-sm text-gray-400 mb-4">Manage user accounts and permissions</p>
+            <button className="w-full bg-purple-500/20 border border-purple-500 text-purple-400 py-2 px-4 rounded-lg font-medium hover:bg-purple-500/30 transition-colors">
+              MANAGE USERS
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* System Configuration */}
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <Settings className="w-5 h-5 text-primary-500" />
+          SYSTEM CONFIGURATION
+        </h2>
+        <AdminConfigPanel 
+          onSaveConfig={handleSaveConfig}
+          onResetConfig={handleResetConfig}
+        />
+      </div>
+
+      {/* System Information */}
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <Server className="w-5 h-5 text-primary-500" />
+          SYSTEM INFORMATION
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card-bg rounded-2xl p-6">
+            <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
+              ENVIRONMENT
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Environment:</span>
+                <span className="text-green-400">Production</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Version:</span>
+                <span className="text-white">v2.1.0</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Build:</span>
+                <span className="text-white">#1247</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Last Deploy:</span>
+                <span className="text-white">2024-01-15 14:30 UTC</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="card-bg rounded-2xl p-6">
+            <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
+              RESOURCES
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-gray-400">CPU Usage</span>
+                  <span className="text-white">{systemStats.systemLoad}%</span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div 
+                    className="bg-primary-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${systemStats.systemLoad}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-gray-400">Memory Usage</span>
+                  <span className="text-white">45%</span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className="bg-yellow-400 h-2 rounded-full transition-all duration-300 w-[45%]" />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-gray-400">Disk Usage</span>
+                  <span className="text-white">67%</span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className="bg-orange-400 h-2 rounded-full transition-all duration-300 w-[67%]" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

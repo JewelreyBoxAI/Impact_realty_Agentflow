@@ -5,57 +5,39 @@ import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 interface KPIWidgetProps {
   title: string
-  value: number
-  trend: 'up' | 'down' | 'stable'
-  color: 'red' | 'blue' | 'green' | 'purple' | 'yellow'
-  onClick?: () => void
+  value: number | string
+  trend?: 'up' | 'down' | 'stable' | 'none'
+  format?: 'number' | 'currency' | 'percentage'
+  subtitle?: string
+  icon?: React.ReactNode
+  color?: 'primary' | 'success' | 'warning' | 'error'
 }
 
-export function KPIWidget({ title, value, trend, color, onClick }: KPIWidgetProps) {
-  const getColorClasses = () => {
-    switch (color) {
-      case 'red':
-        return {
-          bg: 'bg-red-500/10',
-          border: 'border-red-500/30',
-          text: 'text-red-400',
-          accent: 'text-red-300'
-        }
-      case 'blue':
-        return {
-          bg: 'bg-blue-500/10',
-          border: 'border-blue-500/30',
-          text: 'text-blue-400',
-          accent: 'text-blue-300'
-        }
-      case 'green':
-        return {
-          bg: 'bg-green-500/10',
-          border: 'border-green-500/30',
-          text: 'text-green-400',
-          accent: 'text-green-300'
-        }
-      case 'purple':
-        return {
-          bg: 'bg-purple-500/10',
-          border: 'border-purple-500/30',
-          text: 'text-purple-400',
-          accent: 'text-purple-300'
-        }
-      case 'yellow':
-        return {
-          bg: 'bg-yellow-500/10',
-          border: 'border-yellow-500/30',
-          text: 'text-yellow-400',
-          accent: 'text-yellow-300'
-        }
+export function KPIWidget({ 
+  title, 
+  value, 
+  trend = 'none', 
+  format = 'number',
+  subtitle,
+  icon,
+  color = 'primary'
+}: KPIWidgetProps) {
+  const formatValue = (val: number | string) => {
+    if (typeof val === 'string') return val
+    
+    switch (format) {
+      case 'currency':
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(val)
+      case 'percentage':
+        return `${val}%`
+      case 'number':
       default:
-        return {
-          bg: 'bg-[#00FFFF]/10',
-          border: 'border-[#00FFFF]/30',
-          text: 'text-[#00FFFF]',
-          accent: 'text-[#00CED1]'
-        }
+        return new Intl.NumberFormat('en-US').format(val)
     }
   }
 
@@ -72,93 +54,70 @@ export function KPIWidget({ title, value, trend, color, onClick }: KPIWidgetProp
     }
   }
 
-  const getTrendText = () => {
-    switch (trend) {
-      case 'up':
-        return 'TRENDING UP'
-      case 'down':
-        return 'TRENDING DOWN'
-      case 'stable':
-        return 'STABLE'
+  const getColorClasses = () => {
+    switch (color) {
+      case 'success':
+        return 'text-green-400 border-green-400/20'
+      case 'warning':
+        return 'text-yellow-400 border-yellow-400/20'
+      case 'error':
+        return 'text-red-400 border-red-400/20'
+      case 'primary':
       default:
-        return 'NO DATA'
+        return 'text-primary-500 border-primary-500/20'
     }
   }
 
-  const colors = getColorClasses()
-
   return (
-    <div 
-      className={`
-        ${colors.bg} ${colors.border} border rounded-2xl p-6 
-        transition-all duration-300 hover:scale-105 hover:shadow-lg
-        ${onClick ? 'cursor-pointer hover:border-opacity-60' : ''}
-        backdrop-filter backdrop-blur-sm
-      `}
-      onClick={onClick}
-    >
+    <div className={`metric-card ${getColorClasses()}`}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-orbitron text-sm font-medium text-gray-300 tracking-wider">
-          {title.toUpperCase()}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-gray-300 uppercase tracking-wide">
+          {title}
         </h3>
-        {getTrendIcon()}
+        {icon && (
+          <div className="text-gray-400">
+            {icon}
+          </div>
+        )}
       </div>
 
       {/* Value */}
-      <div className="mb-4">
-        <div className={`text-4xl font-orbitron font-bold ${colors.text} mb-1`}>
-          {value.toLocaleString()}
+      <div className="flex items-end justify-between">
+        <div>
+          <div className={`text-3xl font-orbitron font-bold ${getColorClasses().split(' ')[0]} mb-1`}>
+            {formatValue(value)}
+          </div>
+          {subtitle && (
+            <p className="text-sm text-gray-400">
+              {subtitle}
+            </p>
+          )}
         </div>
-        <div className={`text-xs ${colors.accent} font-medium tracking-wide`}>
-          {getTrendText()}
-        </div>
+        
+        {trend !== 'none' && (
+          <div className="flex items-center gap-1">
+            {getTrendIcon()}
+          </div>
+        )}
       </div>
 
-      {/* Progress Bar */}
-      <div className="mb-4">
-        <div className="w-full bg-gray-700/50 rounded-full h-2">
-          <div 
-            className={`
-              h-2 rounded-full transition-all duration-1000 ease-out
-              ${color === 'red' ? 'bg-red-400' : ''}
-              ${color === 'blue' ? 'bg-blue-400' : ''}
-              ${color === 'green' ? 'bg-green-400' : ''}
-              ${color === 'purple' ? 'bg-purple-400' : ''}
-              ${color === 'yellow' ? 'bg-yellow-400' : ''}
-            `}
-            style={{ 
-              width: `${Math.min((value / 100) * 100, 100)}%`,
-              boxShadow: `0 0 10px ${colors.text.replace('text-', 'rgba(').replace('400', '400, 0.5)')}`
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Action Hint */}
-      {onClick && (
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500">Click to view details</span>
-          <div className={`w-2 h-2 rounded-full ${colors.text.replace('text-', 'bg-')} animate-pulse`} />
+      {/* Progress bar for percentage values */}
+      {format === 'percentage' && typeof value === 'number' && (
+        <div className="mt-4">
+          <div className="w-full bg-gray-700/50 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-500 ${
+                color === 'success' ? 'bg-green-400' :
+                color === 'warning' ? 'bg-yellow-400' :
+                color === 'error' ? 'bg-red-400' :
+                'bg-primary-500'
+              }`}
+              style={{ width: `${Math.min(value, 100)}%` }}
+            />
+          </div>
         </div>
       )}
-
-      {/* Glow Effect */}
-      <div 
-        className={`
-          absolute inset-0 rounded-2xl opacity-0 hover:opacity-20 transition-opacity duration-300
-          ${color === 'red' ? 'bg-red-400' : ''}
-          ${color === 'blue' ? 'bg-blue-400' : ''}
-          ${color === 'green' ? 'bg-green-400' : ''}
-          ${color === 'purple' ? 'bg-purple-400' : ''}
-          ${color === 'yellow' ? 'bg-yellow-400' : ''}
-          pointer-events-none
-        `}
-        style={{
-          filter: 'blur(20px)',
-          zIndex: -1
-        }}
-      />
     </div>
   )
 } 

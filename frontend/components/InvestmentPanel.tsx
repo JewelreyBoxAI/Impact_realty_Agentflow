@@ -1,198 +1,325 @@
 'use client'
 
-import React from 'react'
-import { TrendingUp, DollarSign, BarChart3, AlertTriangle } from 'lucide-react'
-
-interface Deal {
-  id: string
-  type: string
-  status: string
-  description: string
-  priority: string
-  metadata: {
-    price?: number
-    sqft?: number
-    roi_projection?: number
-  }
-  created_at: string
-  updated_at: string
-}
+import React, { useState } from 'react'
+import { TrendingUp, TrendingDown, DollarSign, Calendar, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Investment } from '@/types/database'
 
 interface InvestmentPanelProps {
-  deals?: Deal[]
-  onAnalysisComplete: (results: any) => void
-  analysisResults?: any
-  loading: boolean
-  setLoading: (loading: boolean) => void
+  investments: Investment[]
+  onInvestmentAction?: (investmentId: string, action: string) => void
 }
 
-export function InvestmentPanel({ 
-  deals = [], 
-  onAnalysisComplete, 
-  analysisResults, 
-  loading, 
-  setLoading 
-}: InvestmentPanelProps) {
-  
-  const runAnalysis = async (type: string) => {
-    setLoading(true)
-    try {
-      // Simulate analysis
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      const mockResults = {
-        type,
-        timestamp: new Date().toISOString(),
-        deals_analyzed: deals.length,
-        recommendations: [
-          'Consider increasing investment in commercial properties',
-          'Diversify portfolio with residential opportunities',
-          'Monitor market trends for optimal timing'
-        ],
-        roi_projections: deals.map(deal => ({
-          id: deal.id,
-          current_roi: deal.metadata?.roi_projection || Math.random() * 20 + 5,
-          projected_roi: Math.random() * 25 + 10,
-          risk_level: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)]
-        }))
-      }
-      
-      onAnalysisComplete(mockResults)
-    } catch (error) {
-      console.error('Analysis failed:', error)
-    } finally {
-      setLoading(false)
+export function InvestmentPanel({ investments, onInvestmentAction }: InvestmentPanelProps) {
+  const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(null)
+  const [filterStatus, setFilterStatus] = useState<string>('all')
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'text-green-400 bg-green-400/10'
+      case 'in_progress':
+        return 'text-blue-400 bg-blue-400/10'
+      case 'approved':
+        return 'text-yellow-400 bg-yellow-400/10'
+      case 'analyzing':
+        return 'text-orange-400 bg-orange-400/10'
+      case 'cancelled':
+        return 'text-red-400 bg-red-400/10'
+      default:
+        return 'text-gray-400 bg-gray-400/10'
     }
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Analysis Controls */}
-      <div className="card-bg rounded-2xl p-6">
-        <h2 className="font-orbitron text-xl font-semibold text-white mb-4">
-          INVESTMENT ANALYSIS PANEL
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <button
-            onClick={() => runAnalysis('market_analysis')}
-            disabled={loading}
-            className="neon-button p-4 rounded-lg text-center disabled:opacity-50"
-          >
-            <BarChart3 className="w-6 h-6 mx-auto mb-2" />
-            <div className="text-sm font-medium">Market Analysis</div>
-          </button>
-          
-          <button
-            onClick={() => runAnalysis('roi_projection')}
-            disabled={loading}
-            className="neon-button p-4 rounded-lg text-center disabled:opacity-50"
-          >
-            <TrendingUp className="w-6 h-6 mx-auto mb-2" />
-            <div className="text-sm font-medium">ROI Projection</div>
-          </button>
-          
-          <button
-            onClick={() => runAnalysis('risk_assessment')}
-            disabled={loading}
-            className="neon-button p-4 rounded-lg text-center disabled:opacity-50"
-          >
-            <AlertTriangle className="w-6 h-6 mx-auto mb-2" />
-            <div className="text-sm font-medium">Risk Assessment</div>
-          </button>
-        </div>
+  const getRiskColor = (risk: string) => {
+    switch (risk) {
+      case 'low':
+        return 'text-green-400'
+      case 'medium':
+        return 'text-yellow-400'
+      case 'high':
+        return 'text-red-400'
+      default:
+        return 'text-gray-400'
+    }
+  }
 
-        {loading && (
-          <div className="text-center py-8">
-            <div className="w-8 h-8 border-2 border-[#00FFFF] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-[#00FFFF] font-orbitron">Running Analysis...</p>
-          </div>
-        )}
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
+
+  const formatPercentage = (value: number) => {
+    return `${value.toFixed(1)}%`
+  }
+
+  const filteredInvestments = investments.filter(investment => 
+    filterStatus === 'all' || investment.status === filterStatus
+  )
+
+  const InvestmentCard = ({ investment }: { investment: Investment }) => (
+    <div className="card-bg rounded-xl p-6 hover:bg-gray-800/50 transition-colors">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h4 className="font-orbitron font-semibold text-white mb-1">
+            {investment.type.replace('_', ' ').toUpperCase()}
+          </h4>
+          <p className="text-sm text-gray-400">ID: {investment.id.slice(0, 8)}</p>
+        </div>
+        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(investment.status)}`}>
+          {investment.status.replace('_', ' ').toUpperCase()}
+        </span>
       </div>
 
-      {/* Active Deals */}
-      <div className="card-bg rounded-2xl p-6">
-        <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
-          ACTIVE INVESTMENT DEALS
-        </h3>
-        
-        {deals.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            No active investment deals found
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <div className="text-sm text-gray-400">Investment Amount</div>
+          <div className="text-xl font-orbitron font-bold text-primary-500">
+            {formatCurrency(investment.investmentAmount)}
           </div>
-        ) : (
-          <div className="space-y-4">
-            {deals.slice(0, 5).map((deal) => (
-              <div key={deal.id} className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-green-400" />
-                    <span className="font-medium text-white">{deal.description}</span>
+        </div>
+        <div>
+          <div className="text-sm text-gray-400">Expected ROI</div>
+          <div className="text-xl font-orbitron font-bold text-green-400">
+            {formatPercentage(investment.expectedROI)}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2 mb-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-400">Risk Level:</span>
+          <span className={`font-medium ${getRiskColor(investment.riskLevel)}`}>
+            {investment.riskLevel.toUpperCase()}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-400">IRR:</span>
+          <span className="text-white">{formatPercentage(investment.metrics.irr)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-400">NPV:</span>
+          <span className="text-white">{formatCurrency(investment.metrics.npv)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-400">Payback Period:</span>
+          <span className="text-white">{investment.metrics.paybackPeriod} months</span>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <div className="text-sm text-gray-400 mb-2">Timeline</div>
+        <div className="text-xs text-gray-300">
+          <div>Start: {new Date(investment.timeline.startDate).toLocaleDateString()}</div>
+          <div>Expected End: {new Date(investment.timeline.expectedEndDate).toLocaleDateString()}</div>
+          {investment.timeline.actualEndDate && (
+            <div>Actual End: {new Date(investment.timeline.actualEndDate).toLocaleDateString()}</div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => setSelectedInvestment(investment)}
+          className="flex-1 bg-primary-500/20 border border-primary-500 text-primary-400 py-2 px-3 rounded text-sm font-medium hover:bg-primary-500/30 transition-colors"
+        >
+          VIEW DETAILS
+        </button>
+        <button
+          onClick={() => onInvestmentAction?.(investment.id, 'analyze')}
+          className="flex-1 bg-gray-600/20 border border-gray-600 text-gray-300 py-2 px-3 rounded text-sm font-medium hover:bg-gray-600/30 transition-colors"
+        >
+          ANALYZE
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-primary-500"
+          >
+            <option value="all">All Status</option>
+            <option value="analyzing">Analyzing</option>
+            <option value="approved">Approved</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div className="text-sm text-gray-400">
+          {filteredInvestments.length} investments
+        </div>
+      </div>
+
+      {/* Investment Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredInvestments.map(investment => (
+          <InvestmentCard key={investment.id} investment={investment} />
+        ))}
+      </div>
+
+      {filteredInvestments.length === 0 && (
+        <div className="text-center py-12">
+          <div className="text-gray-400 mb-2">No investments found</div>
+          <div className="text-sm text-gray-500">
+            {filterStatus !== 'all' ? 'Try adjusting your filters' : 'Investments will appear here once created'}
+          </div>
+        </div>
+      )}
+
+      {/* Investment Detail Modal */}
+      {selectedInvestment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card-bg rounded-2xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-orbitron text-xl font-semibold text-white">
+                INVESTMENT ANALYSIS
+              </h3>
+              <button 
+                onClick={() => setSelectedInvestment(null)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-orbitron text-lg font-semibold text-white mb-3">
+                    BASIC INFORMATION
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Type:</span>
+                      <span className="text-white capitalize">{selectedInvestment.type.replace('_', ' ')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Status:</span>
+                      <span className="text-white capitalize">{selectedInvestment.status.replace('_', ' ')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Risk Level:</span>
+                      <span className={getRiskColor(selectedInvestment.riskLevel)}>
+                        {selectedInvestment.riskLevel.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Analyst:</span>
+                      <span className="text-white">{selectedInvestment.assignedAnalyst}</span>
+                    </div>
                   </div>
-                  <span className={`
-                    text-xs px-2 py-1 rounded
-                    ${deal.priority === 'high' ? 'bg-red-500/20 text-red-400' : 
-                      deal.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 
-                      'bg-green-500/20 text-green-400'}
-                  `}>
-                    {deal.priority?.toUpperCase()}
-                  </span>
                 </div>
-                
-                <div className="grid grid-cols-3 gap-4 text-sm text-gray-300">
-                  <div>
-                    <div className="text-gray-500">Price</div>
-                    <div>${(deal.metadata?.price || 0).toLocaleString()}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Sq Ft</div>
-                    <div>{(deal.metadata?.sqft || 0).toLocaleString()}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">ROI Projection</div>
-                    <div className="text-green-400">{deal.metadata?.roi_projection || 0}%</div>
+
+                {/* Financial Metrics */}
+                <div>
+                  <h4 className="font-orbitron text-lg font-semibold text-white mb-3">
+                    FINANCIAL METRICS
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Investment Amount:</span>
+                      <span className="text-primary-500 font-bold">
+                        {formatCurrency(selectedInvestment.investmentAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Expected ROI:</span>
+                      <span className="text-green-400 font-bold">
+                        {formatPercentage(selectedInvestment.expectedROI)}
+                      </span>
+                    </div>
+                    {selectedInvestment.actualROI && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Actual ROI:</span>
+                        <span className="text-green-400 font-bold">
+                          {formatPercentage(selectedInvestment.actualROI)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">IRR:</span>
+                      <span className="text-white">{formatPercentage(selectedInvestment.metrics.irr)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">NPV:</span>
+                      <span className="text-white">{formatCurrency(selectedInvestment.metrics.npv)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Payback Period:</span>
+                      <span className="text-white">{selectedInvestment.metrics.paybackPeriod} months</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Analysis Results */}
-      {analysisResults && (
-        <div className="card-bg rounded-2xl p-6">
-          <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
-            ANALYSIS RESULTS
-          </h3>
-          
-          <div className="space-y-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-400">Analysis Type:</span>
-              <span className="text-[#00FFFF] font-medium">{analysisResults.type?.toUpperCase()}</span>
-            </div>
-            
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-400">Deals Analyzed:</span>
-              <span className="text-white">{analysisResults.deals_analyzed}</span>
-            </div>
-            
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-400">Completed:</span>
-              <span className="text-white">{new Date(analysisResults.timestamp).toLocaleString()}</span>
+              {/* Timeline & Cash Flow */}
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-orbitron text-lg font-semibold text-white mb-3">
+                    TIMELINE
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Start Date:</span>
+                      <span className="text-white">
+                        {new Date(selectedInvestment.timeline.startDate).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Expected End:</span>
+                      <span className="text-white">
+                        {new Date(selectedInvestment.timeline.expectedEndDate).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {selectedInvestment.timeline.actualEndDate && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Actual End:</span>
+                        <span className="text-white">
+                          {new Date(selectedInvestment.timeline.actualEndDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cash Flow */}
+                <div>
+                  <h4 className="font-orbitron text-lg font-semibold text-white mb-3">
+                    CASH FLOW PROJECTION
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedInvestment.metrics.cashFlow.slice(0, 5).map((flow, index) => (
+                      <div key={index} className="flex justify-between">
+                        <span className="text-gray-400">Year {index + 1}:</span>
+                        <span className={flow >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {formatCurrency(flow)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {analysisResults.recommendations && (
-              <div>
-                <div className="text-gray-400 text-sm mb-2">Recommendations:</div>
-                <ul className="space-y-1">
-                  {analysisResults.recommendations.map((rec: string, index: number) => (
-                    <li key={index} className="text-sm text-gray-300 flex items-start gap-2">
-                      <span className="text-[#00FFFF] mt-1">•</span>
-                      <span>{rec}</span>
-                    </li>
-                  ))}
-                </ul>
+            {/* Notes */}
+            {selectedInvestment.notes && (
+              <div className="mt-6">
+                <h4 className="font-orbitron text-lg font-semibold text-white mb-3">
+                  NOTES
+                </h4>
+                <p className="text-gray-300">{selectedInvestment.notes}</p>
               </div>
             )}
           </div>

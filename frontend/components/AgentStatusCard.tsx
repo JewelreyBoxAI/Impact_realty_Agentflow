@@ -2,25 +2,23 @@
 
 import React from 'react'
 import { Play, Pause, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
-
-interface AgentStatus {
-  id: string
-  name: string
-  type: string
-  status: 'active' | 'idle' | 'error'
-  lastActivity: string
-  tasksCompleted: number
-  successRate: number
-}
+import { AgentStatus } from '@/types/agents'
 
 interface AgentStatusCardProps {
-  agent: AgentStatus
-  onExecute: (action: string) => void
+  agentId: string
+  status?: AgentStatus
+  showDetails?: boolean
+  onAction?: (action: string) => void
 }
 
-export function AgentStatusCard({ agent, onExecute }: AgentStatusCardProps) {
-  const getStatusIcon = () => {
-    switch (agent.status) {
+export function AgentStatusCard({ 
+  agentId, 
+  status, 
+  showDetails = false, 
+  onAction 
+}: AgentStatusCardProps) {
+  const getStatusIcon = (agentStatus: string) => {
+    switch (agentStatus) {
       case 'active':
         return <Play className="w-5 h-5 text-green-400" />
       case 'idle':
@@ -32,152 +30,156 @@ export function AgentStatusCard({ agent, onExecute }: AgentStatusCardProps) {
     }
   }
 
-  const getStatusColor = () => {
-    switch (agent.status) {
+  const getStatusColor = (agentStatus: string) => {
+    switch (agentStatus) {
       case 'active':
-        return 'border-green-400/50 bg-green-400/5'
+        return 'text-green-400'
       case 'idle':
-        return 'border-yellow-400/50 bg-yellow-400/5'
+        return 'text-yellow-400'
       case 'error':
-        return 'border-red-400/50 bg-red-400/5'
+        return 'text-red-400'
       default:
-        return 'border-gray-400/50 bg-gray-400/5'
+        return 'text-gray-400'
     }
   }
 
-  const getStatusText = () => {
-    switch (agent.status) {
-      case 'active':
-        return 'ACTIVE'
-      case 'idle':
-        return 'IDLE'
+  const getHealthColor = (health: string) => {
+    switch (health) {
+      case 'healthy':
+        return 'text-green-400'
+      case 'warning':
+        return 'text-yellow-400'
       case 'error':
-        return 'ERROR'
+        return 'text-red-400'
       default:
-        return 'UNKNOWN'
+        return 'text-gray-400'
     }
   }
+
+  const mockStatus: AgentStatus = {
+    agentId,
+    status: 'active',
+    health: 'healthy',
+    uptime: '99.8%',
+    lastExecution: '2 minutes ago',
+    queueSize: 3,
+    performance: {
+      tasksCompleted: 1247,
+      successRate: 98.5,
+      averageResponseTime: 1200,
+      errorCount: 3
+    },
+    resources: {
+      cpuUsage: 23,
+      memoryUsage: 45,
+      diskUsage: 12
+    }
+  }
+
+  const agentStatus = status || mockStatus
 
   return (
-    <div className={`agent-card p-6 ${getStatusColor()}`}>
+    <div className="agent-card">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          {getStatusIcon()}
+          {getStatusIcon(agentStatus.status)}
           <div>
-            <h3 className="font-orbitron font-semibold text-white text-lg">
-              {agent.name.toUpperCase()}
+            <h3 className="font-orbitron text-lg font-semibold text-white capitalize">
+              {agentId}
             </h3>
-            <p className="text-sm text-gray-400">{agent.type}</p>
+            <p className={`text-sm ${getStatusColor(agentStatus.status)}`}>
+              {agentStatus.status.toUpperCase()}
+            </p>
           </div>
         </div>
-        <div className={`
-          px-3 py-1 rounded-full text-xs font-medium
-          ${agent.status === 'active' ? 'bg-green-400/20 text-green-400' : ''}
-          ${agent.status === 'idle' ? 'bg-yellow-400/20 text-yellow-400' : ''}
-          ${agent.status === 'error' ? 'bg-red-400/20 text-red-400' : ''}
-        `}>
-          {getStatusText()}
+        <div className="flex items-center gap-2">
+          <div className={`status-indicator ${
+            agentStatus.health === 'healthy' ? 'status-active' :
+            agentStatus.health === 'warning' ? 'status-warning' : 'status-error'
+          }`} />
+          <span className={`text-xs font-medium ${getHealthColor(agentStatus.health)}`}>
+            {agentStatus.health.toUpperCase()}
+          </span>
         </div>
       </div>
 
       {/* Metrics */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="text-center">
-          <div className="text-2xl font-orbitron font-bold text-[#00FFFF]">
-            {agent.tasksCompleted}
+          <div className="text-2xl font-orbitron font-bold text-primary-500">
+            {agentStatus.performance.tasksCompleted}
           </div>
           <div className="text-xs text-gray-400">Tasks Completed</div>
         </div>
         <div className="text-center">
-          <div className="text-2xl font-orbitron font-bold text-[#00CED1]">
-            {agent.successRate}%
+          <div className="text-2xl font-orbitron font-bold text-green-400">
+            {agentStatus.performance.successRate}%
           </div>
           <div className="text-xs text-gray-400">Success Rate</div>
         </div>
       </div>
 
-      {/* Last Activity */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <Clock className="w-4 h-4" />
-          <span>Last Activity: {agent.lastActivity}</span>
+      {/* Queue and Last Activity */}
+      <div className="space-y-2 mb-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-400">Queue Size:</span>
+          <span className="text-white">{agentStatus.queueSize}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-400">Last Activity:</span>
+          <span className="text-white">{agentStatus.lastExecution}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-400">Uptime:</span>
+          <span className="text-green-400">{agentStatus.uptime}</span>
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Resource Usage */}
+      {showDetails && (
+        <div className="space-y-3 mb-4">
+          <div>
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-gray-400">CPU Usage</span>
+              <span className="text-white">{agentStatus.resources.cpuUsage}%</span>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-2">
+              <div 
+                className="bg-primary-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${agentStatus.resources.cpuUsage}%` }}
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-gray-400">Memory</span>
+              <span className="text-white">{agentStatus.resources.memoryUsage}%</span>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-2">
+              <div 
+                className="bg-yellow-400 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${agentStatus.resources.memoryUsage}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
       <div className="flex gap-2">
-        <button
-          onClick={() => onExecute('start')}
-          disabled={agent.status === 'active'}
-          className={`
-            flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all
-            ${agent.status === 'active' 
-              ? 'bg-gray-600/20 text-gray-500 cursor-not-allowed' 
-              : 'neon-button'
-            }
-          `}
+        <button 
+          onClick={() => onAction?.('restart')}
+          className="flex-1 neon-button py-2 px-3 rounded text-sm font-medium"
         >
-          {agent.status === 'active' ? 'RUNNING' : 'START'}
+          RESTART
         </button>
-        <button
-          onClick={() => onExecute('stop')}
-          disabled={agent.status !== 'active'}
-          className={`
-            flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all
-            ${agent.status !== 'active' 
-              ? 'bg-gray-600/20 text-gray-500 cursor-not-allowed' 
-              : 'bg-red-500/20 border border-red-500 text-red-400 hover:bg-red-500/30'
-            }
-          `}
+        <button 
+          onClick={() => onAction?.('details')}
+          className="flex-1 bg-gray-600/20 border border-gray-600 text-gray-300 py-2 px-3 rounded text-sm font-medium hover:bg-gray-600/30 transition-colors"
         >
-          STOP
+          DETAILS
         </button>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="mt-4 pt-4 border-t border-[#00FFFF]/10">
-        <div className="flex gap-2">
-          <button
-            onClick={() => onExecute('status')}
-            className="text-xs text-[#00FFFF] hover:text-[#00CED1] transition-colors"
-          >
-            STATUS
-          </button>
-          <span className="text-xs text-gray-600">•</span>
-          <button
-            onClick={() => onExecute('logs')}
-            className="text-xs text-[#00FFFF] hover:text-[#00CED1] transition-colors"
-          >
-            LOGS
-          </button>
-          <span className="text-xs text-gray-600">•</span>
-          <button
-            onClick={() => onExecute('config')}
-            className="text-xs text-[#00FFFF] hover:text-[#00CED1] transition-colors"
-          >
-            CONFIG
-          </button>
-        </div>
-      </div>
-
-      {/* Performance Indicator */}
-      <div className="mt-4">
-        <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-          <span>Performance</span>
-          <span>{agent.successRate}%</span>
-        </div>
-        <div className="w-full bg-gray-700 rounded-full h-2">
-          <div 
-            className={`
-              h-2 rounded-full transition-all duration-500
-              ${agent.successRate >= 90 ? 'bg-green-400' : ''}
-              ${agent.successRate >= 70 && agent.successRate < 90 ? 'bg-yellow-400' : ''}
-              ${agent.successRate < 70 ? 'bg-red-400' : ''}
-            `}
-            style={{ width: `${agent.successRate}%` }}
-          />
-        </div>
       </div>
     </div>
   )

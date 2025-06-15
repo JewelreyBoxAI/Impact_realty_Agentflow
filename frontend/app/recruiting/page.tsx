@@ -2,41 +2,47 @@
 
 import React, { useState, useEffect } from 'react'
 import { RecruitingPipeline } from '@/components/RecruitingPipeline'
+import { AgentStatusCard } from '@/components/AgentStatusCard'
+import { KPIWidget } from '@/components/KPIWidget'
 import { supabaseClient } from '@/utils/supabaseClient'
 import { mcpRouter } from '@/utils/mcpRouter'
-
-interface Candidate {
-  id: string
-  name: string
-  email: string
-  phone: string
-  status: string
-  score: number
-  experience: string
-  location: string
-  notes: string
-  created_at: string
-}
+import { Candidate } from '@/types/database'
+import { Users, UserPlus, Calendar, Target } from 'lucide-react'
 
 export default function RecruitingPage() {
-  const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(true)
-  const [agentStatus, setAgentStatus] = useState<any>(null)
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [recruitingMetrics, setRecruitingMetrics] = useState({
+    totalCandidates: 0,
+    activeCandidates: 0,
+    hiredThisMonth: 0,
+    conversionRate: 0
+  })
 
   useEffect(() => {
     loadRecruitingData()
-    loadAgentStatus()
-    const interval = setInterval(() => {
-      loadRecruitingData()
-      loadAgentStatus()
-    }, 30000) // Refresh every 30 seconds
+    const interval = setInterval(loadRecruitingData, 60000)
     return () => clearInterval(interval)
   }, [])
 
   const loadRecruitingData = async () => {
     try {
-      const data = await supabaseClient.getCandidates()
-      setCandidates(data)
+      const candidateData = await supabaseClient.getCandidates()
+      setCandidates(candidateData)
+      
+      // Calculate metrics
+      const active = candidateData.filter(c => 
+        ['lead', 'contacted', 'interviewed', 'offer_made'].includes(c.status)
+      ).length
+      const hired = candidateData.filter(c => c.status === 'hired').length
+      const conversion = candidateData.length > 0 ? (hired / candidateData.length) * 100 : 0
+      
+      setRecruitingMetrics({
+        totalCandidates: candidateData.length,
+        activeCandidates: active,
+        hiredThisMonth: hired,
+        conversionRate: Math.round(conversion)
+      })
     } catch (error) {
       console.error('Failed to load recruiting data:', error)
     } finally {
@@ -44,61 +50,50 @@ export default function RecruitingPage() {
     }
   }
 
-  const loadAgentStatus = async () => {
+  const startRecruitingCampaign = async () => {
     try {
-      const result = await mcpRouter.getAgentStatus('recruiting')
+      const result = await mcpRouter.executeWorkflow('recruiting_campaign', {
+        type: 'outreach',
+        priority: 'high'
+      })
+      
       if (result.success) {
-        setAgentStatus(result.data)
+        console.log('Recruiting campaign started:', result.data)
       }
     } catch (error) {
-      console.error('Failed to load agent status:', error)
+      console.error('Failed to start recruiting campaign:', error)
     }
   }
 
-  const triggerOutreach = async () => {
+  const generateRecruitingReport = async () => {
     try {
-      const result = await mcpRouter.invokeAgent('recruiting', {
-        action: 'candidate_outreach',
-        target_count: 10
+      const result = await mcpRouter.executeWorkflow('recruiting_report', {
+        period: 'monthly',
+        includeMetrics: true
       })
-      console.log('Outreach triggered:', result)
+      
       if (result.success) {
-        loadRecruitingData() // Refresh data
+        console.log('Recruiting report generated:', result.data)
       }
     } catch (error) {
-      console.error('Failed to trigger outreach:', error)
-    }
-  }
-
-  const runQualificationScan = async () => {
-    try {
-      const result = await mcpRouter.invokeAgent('recruiting', {
-        action: 'qualification_scan',
-        scope: 'all_new_candidates'
-      })
-      console.log('Qualification scan triggered:', result)
-      if (result.success) {
-        loadRecruitingData()
-      }
-    } catch (error) {
-      console.error('Failed to run qualification scan:', error)
+      console.error('Failed to generate recruiting report:', error)
     }
   }
 
   const handleCandidateAction = async (candidateId: string, action: string) => {
     try {
-      const result = await mcpRouter.invokeAgent('recruiting', {
-        action: 'candidate_action',
-        candidate_id: candidateId,
-        action_type: action
+      const result = await mcpRouter.executeWorkflow('candidate_action', {
+        candidateId,
+        action,
+        priority: 'medium'
       })
       
       if (result.success) {
-        console.log('Candidate action completed:', result.data)
+        console.log(`Candidate ${candidateId} action ${action} completed:`, result.data)
         loadRecruitingData() // Refresh data
       }
     } catch (error) {
-      console.error('Candidate action failed:', error)
+      console.error(`Failed to execute candidate action ${action}:`, error)
     }
   }
 
@@ -106,155 +101,125 @@ export default function RecruitingPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="w-12 h-12 border-2 border-[#00FFFF] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-[#00FFFF] font-orbitron">Loading Recruiting Pipeline...</p>
+          <div className="loading-spinner mx-auto mb-4" />
+          <p className="text-primary-500 font-orbitron">Loading Recruiting Data...</p>
         </div>
       </div>
     )
   }
 
-  const getStageCount = (stage: string) => {
-    return candidates.filter(candidate => candidate.status === stage).length
-  }
-
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="section-header">
         <div>
-          <h1 className="font-orbitron text-3xl font-bold gradient-text">
-            RECRUITING PIPELINE
+          <h1 className="section-title">
+            TALENT ACQUISITION
           </h1>
-          <p className="text-gray-400 mt-2">
-            Eileen's automated candidate sourcing and qualification system
+          <p className="section-subtitle">
+            Eileen Agent - Recruiting and talent management
           </p>
         </div>
         <div className="flex gap-4">
           <button 
-            onClick={runQualificationScan}
+            onClick={startRecruitingCampaign}
             className="neon-button px-6 py-3 rounded-lg font-medium"
           >
-            QUALIFICATION SCAN
+            START CAMPAIGN
           </button>
           <button 
-            onClick={triggerOutreach}
-            className="bg-purple-500/20 border border-purple-400 text-purple-400 px-6 py-3 rounded-lg font-medium hover:bg-purple-500/30 transition-colors"
+            onClick={generateRecruitingReport}
+            className="bg-purple-500/20 border border-purple-500 text-purple-400 px-6 py-3 rounded-lg font-medium hover:bg-purple-500/30 transition-colors"
           >
-            RUN OUTREACH
+            GENERATE REPORT
           </button>
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-blue-400 mb-2">
-              {getStageCount('new')}
-            </div>
-            <div className="text-sm text-gray-400">New Leads</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-yellow-400 mb-2">
-              {getStageCount('screening')}
-            </div>
-            <div className="text-sm text-gray-400">Screening</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-purple-400 mb-2">
-              {getStageCount('interview')}
-            </div>
-            <div className="text-sm text-gray-400">Interview</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-green-400 mb-2">
-              {getStageCount('qualified')}
-            </div>
-            <div className="text-sm text-gray-400">Qualified</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-[#00FFFF] mb-2">
-              {candidates.length}
-            </div>
-            <div className="text-sm text-gray-400">Total Pipeline</div>
-          </div>
-        </div>
+      {/* Recruiting Metrics */}
+      <div className="stats-grid">
+        <KPIWidget
+          title="Total Candidates"
+          value={recruitingMetrics.totalCandidates}
+          icon={<Users className="w-5 h-5" />}
+          color="primary"
+        />
+        <KPIWidget
+          title="Active Pipeline"
+          value={recruitingMetrics.activeCandidates}
+          trend="up"
+          icon={<UserPlus className="w-5 h-5" />}
+          color="success"
+        />
+        <KPIWidget
+          title="Hired This Month"
+          value={recruitingMetrics.hiredThisMonth}
+          trend="up"
+          icon={<Target className="w-5 h-5" />}
+          color="success"
+        />
+        <KPIWidget
+          title="Conversion Rate"
+          value={recruitingMetrics.conversionRate}
+          format="percentage"
+          trend="stable"
+          icon={<Calendar className="w-5 h-5" />}
+          color="warning"
+        />
       </div>
 
       {/* Agent Status */}
-      {agentStatus && (
-        <div className="card-bg rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-orbitron text-lg font-semibold text-white mb-2">
-                EILEEN RODRIGUEZ - RECRUITING AGENT
-              </h3>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${agentStatus.status === 'active' ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
-                  <span className="text-gray-300">{agentStatus.status?.toUpperCase()}</span>
-                </div>
-                <span className="text-gray-400">•</span>
-                <span className="text-gray-300">Last Activity: {agentStatus.last_execution}</span>
-                <span className="text-gray-400">•</span>
-                <span className="text-gray-300">Queue: {agentStatus.queue_size} items</span>
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <Users className="w-5 h-5 text-primary-500" />
+          EILEEN AGENT STATUS
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <AgentStatusCard 
+            agentId="recruiting" 
+            showDetails={true}
+            onAction={(action) => console.log('Recruiting agent action:', action)}
+          />
+          <div className="card-bg rounded-2xl p-6">
+            <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
+              RECENT ACTIVITIES
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <UserPlus className="w-4 h-4 text-green-400" />
+                <span className="text-gray-300">Added 3 new candidates to pipeline</span>
+                <span className="text-gray-500 ml-auto">5 min ago</span>
               </div>
-            </div>
-            <div className="text-right">
-              <div className="text-[#00FFFF] font-orbitron font-bold text-2xl">
-                {agentStatus.candidates_processed_today || 0}
+              <div className="flex items-center gap-3 text-sm">
+                <Calendar className="w-4 h-4 text-blue-400" />
+                <span className="text-gray-300">Scheduled interview with Sarah Johnson</span>
+                <span className="text-gray-500 ml-auto">20 min ago</span>
               </div>
-              <div className="text-xs text-gray-400">Candidates Processed Today</div>
+              <div className="flex items-center gap-3 text-sm">
+                <Target className="w-4 h-4 text-yellow-400" />
+                <span className="text-gray-300">Sent follow-up to 5 candidates</span>
+                <span className="text-gray-500 ml-auto">1 hour ago</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Users className="w-4 h-4 text-purple-400" />
+                <span className="text-gray-300">Updated recruiting campaign metrics</span>
+                <span className="text-gray-500 ml-auto">2 hours ago</span>
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Pipeline Component */}
-      <RecruitingPipeline 
-        candidates={candidates}
-        onCandidateAction={handleCandidateAction}
-      />
-
-      {/* Quick Actions */}
-      <div className="card-bg rounded-2xl p-6">
-        <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
-          QUICK ACTIONS
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button 
-            onClick={() => triggerOutreach()}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Mass Outreach</div>
-          </button>
-          <button 
-            onClick={() => runQualificationScan()}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Qualify Leads</div>
-          </button>
-          <button 
-            onClick={() => loadRecruitingData()}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Refresh Data</div>
-          </button>
-          <button 
-            onClick={() => mcpRouter.invokeAgent('recruiting', { action: 'generate_report' })}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Generate Report</div>
-          </button>
-        </div>
+      {/* Recruiting Pipeline */}
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <Target className="w-5 h-5 text-primary-500" />
+          CANDIDATE PIPELINE
+        </h2>
+        <RecruitingPipeline 
+          candidates={candidates}
+          onCandidateAction={handleCandidateAction}
+        />
       </div>
     </div>
   )

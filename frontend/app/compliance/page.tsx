@@ -2,51 +2,45 @@
 
 import React, { useState, useEffect } from 'react'
 import { ComplianceTable } from '@/components/ComplianceTable'
+import { AgentStatusCard } from '@/components/AgentStatusCard'
+import { KPIWidget } from '@/components/KPIWidget'
 import { supabaseClient } from '@/utils/supabaseClient'
 import { mcpRouter } from '@/utils/mcpRouter'
-
-interface ComplianceItem {
-  id: string
-  dealId: string
-  type: string
-  status: 'pending' | 'review' | 'approved' | 'rejected'
-  priority: 'low' | 'medium' | 'high' | 'critical'
-  description: string
-  dueDate: string
-  assignedTo: string
-  documents: string[]
-  lastUpdated: string
-}
+import { ComplianceRecord } from '@/types/database'
+import { Shield, AlertTriangle, CheckCircle, FileText } from 'lucide-react'
 
 export default function CompliancePage() {
-  const [complianceItems, setComplianceItems] = useState<ComplianceItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedItems, setSelectedItems] = useState<string[]>([])
+  const [records, setRecords] = useState<ComplianceRecord[]>([])
+  const [selectedRecord, setSelectedRecord] = useState<ComplianceRecord | null>(null)
+  const [complianceMetrics, setComplianceMetrics] = useState({
+    totalRecords: 0,
+    pendingReviews: 0,
+    complianceScore: 94,
+    criticalIssues: 2
+  })
 
   useEffect(() => {
     loadComplianceData()
+    const interval = setInterval(loadComplianceData, 60000)
+    return () => clearInterval(interval)
   }, [])
 
   const loadComplianceData = async () => {
     try {
-      setLoading(true)
-      const deals = await supabaseClient.getDeals({ status: 'active' })
+      const complianceRecords = await supabaseClient.getComplianceRecords()
+      setRecords(complianceRecords)
       
-      // Transform deals into compliance items
-      const items: ComplianceItem[] = deals.map(deal => ({
-        id: `comp_${deal.id}`,
-        dealId: deal.id,
-        type: deal.type || 'General',
-        status: deal.compliance_status || 'pending',
-        priority: deal.priority || 'medium',
-        description: deal.description || 'Compliance review required',
-        dueDate: deal.due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        assignedTo: 'Karen Martinez',
-        documents: deal.documents || [],
-        lastUpdated: deal.updated_at || new Date().toISOString()
-      }))
-
-      setComplianceItems(items)
+      // Calculate metrics
+      const pending = complianceRecords.filter(r => r.status === 'pending' || r.status === 'in_review').length
+      const critical = complianceRecords.filter(r => r.priority === 'critical').length
+      
+      setComplianceMetrics({
+        totalRecords: complianceRecords.length,
+        pendingReviews: pending,
+        complianceScore: Math.max(60, 100 - (critical * 10) - (pending * 2)),
+        criticalIssues: critical
+      })
     } catch (error) {
       console.error('Failed to load compliance data:', error)
     } finally {
@@ -54,36 +48,59 @@ export default function CompliancePage() {
     }
   }
 
-  const triggerComplianceReview = async (itemIds: string[]) => {
+  const runComplianceAudit = async () => {
     try {
-      const result = await mcpRouter.invokeAgent('compliance', {
-        action: 'review_items',
-        item_ids: itemIds,
-        reviewer: 'Karen Martinez'
+      const result = await mcpRouter.executeWorkflow('compliance_audit', {
+        type: 'full_audit',
+        priority: 'high'
       })
-
+      
       if (result.success) {
-        console.log('Compliance review triggered:', result.data)
+        console.log('Compliance audit initiated:', result.data)
         loadComplianceData() // Refresh data
       }
     } catch (error) {
-      console.error('Failed to trigger compliance review:', error)
+      console.error('Failed to run compliance audit:', error)
     }
   }
 
-  const runFullAudit = async () => {
+  const generateComplianceReport = async () => {
     try {
-      const result = await mcpRouter.invokeAgent('compliance', {
-        action: 'full_audit',
-        scope: 'all_active_deals'
+      const result = await mcpRouter.executeWorkflow('generate_compliance_report', {
+        period: 'monthly',
+        includeRecommendations: true
       })
-
+      
       if (result.success) {
-        console.log('Full audit initiated:', result.data)
-        loadComplianceData()
+        console.log('Compliance report generated:', result.data)
       }
     } catch (error) {
-      console.error('Failed to run full audit:', error)
+      console.error('Failed to generate compliance report:', error)
+    }
+  }
+
+  const handleViewRecord = (record: ComplianceRecord) => {
+    setSelectedRecord(record)
+  }
+
+  const handleDownloadReport = async (recordId: string) => {
+    try {
+      const result = await mcpRouter.executeWorkflow('download_compliance_report', {
+        recordId,
+        format: 'pdf',
+        priority: 'medium'
+      })
+      
+      if (result.success) {
+        console.log('Compliance report download initiated:', result.data)
+        // In a real implementation, this would trigger a file download
+        const downloadUrl = result.data?.downloadUrl
+        if (downloadUrl) {
+          window.open(downloadUrl, '_blank')
+        }
+      }
+    } catch (error) {
+      console.error('Failed to download compliance report:', error)
     }
   }
 
@@ -91,8 +108,8 @@ export default function CompliancePage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="w-12 h-12 border-2 border-[#00FFFF] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-[#00FFFF] font-orbitron">Loading Compliance Data...</p>
+          <div className="loading-spinner mx-auto mb-4" />
+          <p className="text-primary-500 font-orbitron">Loading Compliance Data...</p>
         </div>
       </div>
     )
@@ -101,160 +118,189 @@ export default function CompliancePage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="section-header">
         <div>
-          <h1 className="font-orbitron text-3xl font-bold gradient-text">
-            COMPLIANCE CONTROL
+          <h1 className="section-title">
+            COMPLIANCE OVERSIGHT
           </h1>
-          <p className="text-gray-400 mt-2">
-            Karen's automated compliance monitoring and validation system
+          <p className="section-subtitle">
+            Karen Agent - Regulatory compliance and risk management
           </p>
         </div>
         <div className="flex gap-4">
           <button 
-            onClick={runFullAudit}
+            onClick={runComplianceAudit}
             className="neon-button px-6 py-3 rounded-lg font-medium"
           >
-            FULL AUDIT
+            RUN AUDIT
           </button>
           <button 
-            onClick={() => triggerComplianceReview(selectedItems)}
-            disabled={selectedItems.length === 0}
-            className={`
-              px-6 py-3 rounded-lg font-medium transition-colors
-              ${selectedItems.length === 0 
-                ? 'bg-gray-600/20 text-gray-500 cursor-not-allowed' 
-                : 'bg-[#FFA500]/20 border border-[#FFA500] text-[#FFA500] hover:bg-[#FFA500]/30'
-              }
-            `}
+            onClick={generateComplianceReport}
+            className="bg-blue-500/20 border border-blue-500 text-blue-400 px-6 py-3 rounded-lg font-medium hover:bg-blue-500/30 transition-colors"
           >
-            REVIEW SELECTED ({selectedItems.length})
+            GENERATE REPORT
           </button>
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-red-400 mb-2">
-              {complianceItems.filter(item => item.priority === 'critical').length}
-            </div>
-            <div className="text-sm text-gray-400">Critical Issues</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-yellow-400 mb-2">
-              {complianceItems.filter(item => item.status === 'pending').length}
-            </div>
-            <div className="text-sm text-gray-400">Pending Review</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-green-400 mb-2">
-              {complianceItems.filter(item => item.status === 'approved').length}
-            </div>
-            <div className="text-sm text-gray-400">Approved</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-[#00FFFF] mb-2">
-              {Math.round((complianceItems.filter(item => item.status === 'approved').length / complianceItems.length) * 100) || 0}%
-            </div>
-            <div className="text-sm text-gray-400">Compliance Rate</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Compliance Table */}
-      <div className="card-bg rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-orbitron text-xl font-semibold text-white">
-            COMPLIANCE ITEMS
-          </h2>
-          <div className="flex gap-4 text-sm">
-            <button className="text-[#00FFFF] hover:text-[#00CED1]">
-              Filter
-            </button>
-            <button className="text-[#00FFFF] hover:text-[#00CED1]">
-              Export
-            </button>
-            <button 
-              onClick={loadComplianceData}
-              className="text-[#00FFFF] hover:text-[#00CED1]"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-        
-        <ComplianceTable 
-          items={complianceItems}
-          selectedItems={selectedItems}
-          onSelectionChange={setSelectedItems}
-          onItemAction={(itemId, action) => {
-            if (action === 'review') {
-              triggerComplianceReview([itemId])
-            }
-          }}
+      {/* Compliance Metrics */}
+      <div className="stats-grid">
+        <KPIWidget
+          title="Total Records"
+          value={complianceMetrics.totalRecords}
+          icon={<FileText className="w-5 h-5" />}
+          color="primary"
+        />
+        <KPIWidget
+          title="Pending Reviews"
+          value={complianceMetrics.pendingReviews}
+          trend={complianceMetrics.pendingReviews > 5 ? 'up' : 'stable'}
+          icon={<AlertTriangle className="w-5 h-5" />}
+          color="warning"
+        />
+        <KPIWidget
+          title="Compliance Score"
+          value={complianceMetrics.complianceScore}
+          format="percentage"
+          trend="stable"
+          icon={<Shield className="w-5 h-5" />}
+          color={complianceMetrics.complianceScore >= 90 ? 'success' : 'warning'}
+        />
+        <KPIWidget
+          title="Critical Issues"
+          value={complianceMetrics.criticalIssues}
+          trend={complianceMetrics.criticalIssues === 0 ? 'stable' : 'down'}
+          icon={<AlertTriangle className="w-5 h-5" />}
+          color={complianceMetrics.criticalIssues === 0 ? 'success' : 'error'}
         />
       </div>
 
-      {/* Quick Actions */}
-      <div className="card-bg rounded-2xl p-6">
-        <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
-          KAREN'S QUICK ACTIONS
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button 
-            onClick={() => triggerComplianceReview(complianceItems.filter(item => item.priority === 'critical').map(item => item.id))}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Review Critical</div>
-          </button>
-          <button 
-            onClick={() => triggerComplianceReview(complianceItems.filter(item => item.status === 'pending').map(item => item.id))}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Process Pending</div>
-          </button>
-          <button 
-            onClick={runFullAudit}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Generate Report</div>
-          </button>
-          <button 
-            onClick={() => console.log('Document validation triggered')}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Validate Docs</div>
-          </button>
+      {/* Agent Status */}
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <Shield className="w-5 h-5 text-primary-500" />
+          KAREN AGENT STATUS
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <AgentStatusCard 
+            agentId="compliance" 
+            showDetails={true}
+            onAction={(action) => console.log('Compliance agent action:', action)}
+          />
+          <div className="card-bg rounded-2xl p-6">
+            <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
+              RECENT ACTIVITIES
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span className="text-gray-300">Completed regulatory check for Deal #1247</span>
+                <span className="text-gray-500 ml-auto">2 min ago</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                <span className="text-gray-300">Flagged disclosure issue in Deal #1245</span>
+                <span className="text-gray-500 ml-auto">15 min ago</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span className="text-gray-300">Generated monthly compliance report</span>
+                <span className="text-gray-500 ml-auto">1 hour ago</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <FileText className="w-4 h-4 text-blue-400" />
+                <span className="text-gray-300">Updated compliance procedures</span>
+                <span className="text-gray-500 ml-auto">3 hours ago</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Agent Status */}
-      <div className="card-bg rounded-2xl p-6">
-        <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
-          COMPLIANCE AGENT STATUS
-        </h3>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-4 h-4 bg-green-400 rounded-full animate-pulse" />
-            <div>
-              <div className="text-white font-medium">Karen Martinez - Compliance Agent</div>
-              <div className="text-sm text-gray-400">Active • Processing 3 items • 94% accuracy</div>
+      {/* Compliance Records Table */}
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-primary-500" />
+          COMPLIANCE RECORDS
+        </h2>
+        <ComplianceTable 
+          records={records}
+          onViewRecord={handleViewRecord}
+          onDownloadReport={handleDownloadReport}
+        />
+      </div>
+
+      {/* Record Detail Modal */}
+      {selectedRecord && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card-bg rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-orbitron text-xl font-semibold text-white">
+                COMPLIANCE RECORD DETAILS
+              </h3>
+              <button 
+                onClick={() => setSelectedRecord(null)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-gray-400">Record ID</label>
+                  <div className="text-white font-mono">{selectedRecord.id}</div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-400">Type</label>
+                  <div className="text-white capitalize">{selectedRecord.type}</div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-400">Status</label>
+                  <div className="text-white capitalize">{selectedRecord.status}</div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-400">Priority</label>
+                  <div className="text-white capitalize">{selectedRecord.priority}</div>
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm text-gray-400">Title</label>
+                <div className="text-white">{selectedRecord.title}</div>
+              </div>
+              
+              <div>
+                <label className="text-sm text-gray-400">Description</label>
+                <div className="text-gray-300">{selectedRecord.description}</div>
+              </div>
+              
+              {selectedRecord.findings.length > 0 && (
+                <div>
+                  <label className="text-sm text-gray-400">Findings</label>
+                  <ul className="text-gray-300 list-disc list-inside space-y-1">
+                    {selectedRecord.findings.map((finding, index) => (
+                      <li key={index}>{finding}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {selectedRecord.recommendations.length > 0 && (
+                <div>
+                  <label className="text-sm text-gray-400">Recommendations</label>
+                  <ul className="text-gray-300 list-disc list-inside space-y-1">
+                    {selectedRecord.recommendations.map((rec, index) => (
+                      <li key={index}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-[#00FFFF] font-orbitron font-bold">127</div>
-            <div className="text-xs text-gray-400">Items Processed Today</div>
-          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 } 

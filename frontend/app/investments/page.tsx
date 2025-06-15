@@ -2,44 +2,49 @@
 
 import React, { useState, useEffect } from 'react'
 import { InvestmentPanel } from '@/components/InvestmentPanel'
+import { AgentStatusCard } from '@/components/AgentStatusCard'
+import { KPIWidget } from '@/components/KPIWidget'
 import { supabaseClient } from '@/utils/supabaseClient'
 import { mcpRouter } from '@/utils/mcpRouter'
-
-interface Deal {
-  id: string
-  type: string
-  status: string
-  description: string
-  priority: string
-  metadata: {
-    price?: number
-    sqft?: number
-    roi_projection?: number
-  }
-  created_at: string
-  updated_at: string
-}
+import { Investment } from '@/types/database'
+import { TrendingUp, DollarSign, PieChart, BarChart3 } from 'lucide-react'
 
 export default function InvestmentsPage() {
-  const [deals, setDeals] = useState<Deal[]>([])
-  const [analysisResults, setAnalysisResults] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [agentStatus, setAgentStatus] = useState<any>(null)
+  const [investments, setInvestments] = useState<Investment[]>([])
+  const [investmentMetrics, setInvestmentMetrics] = useState({
+    totalInvestments: 0,
+    totalValue: 0,
+    averageROI: 0,
+    activeInvestments: 0
+  })
 
   useEffect(() => {
     loadInvestmentData()
-    loadAgentStatus()
-    const interval = setInterval(() => {
-      loadInvestmentData()
-      loadAgentStatus()
-    }, 30000) // Refresh every 30 seconds
+    const interval = setInterval(loadInvestmentData, 60000)
     return () => clearInterval(interval)
   }, [])
 
   const loadInvestmentData = async () => {
     try {
-      const data = await supabaseClient.getDeals({ type: 'investment' })
-      setDeals(data)
+      const investmentData = await supabaseClient.getInvestments()
+      setInvestments(investmentData)
+      
+      // Calculate metrics
+      const totalValue = investmentData.reduce((sum, inv) => sum + inv.investmentAmount, 0)
+      const avgROI = investmentData.length > 0 
+        ? investmentData.reduce((sum, inv) => sum + inv.expectedROI, 0) / investmentData.length 
+        : 0
+      const active = investmentData.filter(inv => 
+        ['analyzing', 'approved', 'in_progress'].includes(inv.status)
+      ).length
+      
+      setInvestmentMetrics({
+        totalInvestments: investmentData.length,
+        totalValue,
+        averageROI: Math.round(avgROI * 10) / 10,
+        activeInvestments: active
+      })
     } catch (error) {
       console.error('Failed to load investment data:', error)
     } finally {
@@ -47,61 +52,50 @@ export default function InvestmentsPage() {
     }
   }
 
-  const loadAgentStatus = async () => {
+  const runInvestmentAnalysis = async () => {
     try {
-      const result = await mcpRouter.getAgentStatus('investments')
+      const result = await mcpRouter.executeWorkflow('investment_analysis', {
+        type: 'portfolio_review',
+        priority: 'high'
+      })
+      
       if (result.success) {
-        setAgentStatus(result.data)
+        console.log('Investment analysis started:', result.data)
       }
     } catch (error) {
-      console.error('Failed to load agent status:', error)
+      console.error('Failed to run investment analysis:', error)
     }
   }
 
-  const runMarketAnalysis = async () => {
+  const generateInvestmentReport = async () => {
     try {
-      const result = await mcpRouter.invokeAgent('investments', {
-        action: 'market_analysis',
-        scope: 'all_active_deals'
+      const result = await mcpRouter.executeWorkflow('investment_report', {
+        period: 'quarterly',
+        includeProjections: true
       })
-      console.log('Market analysis triggered:', result)
+      
       if (result.success) {
-        setAnalysisResults(result.data)
-        loadInvestmentData()
+        console.log('Investment report generated:', result.data)
       }
     } catch (error) {
-      console.error('Failed to run market analysis:', error)
+      console.error('Failed to generate investment report:', error)
     }
   }
 
-  const runROIProjection = async () => {
+  const handleInvestmentAction = async (investmentId: string, action: string) => {
     try {
-      const result = await mcpRouter.invokeAgent('investments', {
-        action: 'roi_projection',
-        deals: deals.map(d => d.id)
+      const result = await mcpRouter.executeWorkflow('investment_action', {
+        investmentId,
+        action,
+        priority: 'medium'
       })
-      console.log('ROI projection triggered:', result)
+      
       if (result.success) {
-        setAnalysisResults(result.data)
-        loadInvestmentData()
+        console.log(`Investment ${investmentId} action ${action} completed:`, result.data)
+        loadInvestmentData() // Refresh data
       }
     } catch (error) {
-      console.error('Failed to run ROI projection:', error)
-    }
-  }
-
-  const runRiskAssessment = async () => {
-    try {
-      const result = await mcpRouter.invokeAgent('investments', {
-        action: 'risk_assessment',
-        portfolio: deals
-      })
-      console.log('Risk assessment triggered:', result)
-      if (result.success) {
-        setAnalysisResults(result.data)
-      }
-    } catch (error) {
-      console.error('Failed to run risk assessment:', error)
+      console.error(`Failed to execute investment action ${action}:`, error)
     }
   }
 
@@ -109,159 +103,126 @@ export default function InvestmentsPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="w-12 h-12 border-2 border-[#00FFFF] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-[#00FFFF] font-orbitron">Loading Investment Data...</p>
+          <div className="loading-spinner mx-auto mb-4" />
+          <p className="text-primary-500 font-orbitron">Loading Investment Data...</p>
         </div>
       </div>
     )
   }
 
-  const getTotalValue = () => {
-    return deals.reduce((sum, deal) => sum + (deal.metadata?.price || 0), 0)
-  }
-
-  const getAverageROI = () => {
-    const rois = deals.filter(d => d.metadata?.roi_projection).map(d => d.metadata!.roi_projection!)
-    return rois.length > 0 ? rois.reduce((sum, roi) => sum + roi, 0) / rois.length : 0
-  }
-
-  const getHighPriorityCount = () => {
-    return deals.filter(deal => deal.priority === 'high').length
-  }
-
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="section-header">
         <div>
-          <h1 className="font-orbitron text-3xl font-bold gradient-text">
-            INVESTMENT ANALYSIS
+          <h1 className="section-title">
+            INVESTMENT ANALYTICS
           </h1>
-          <p className="text-gray-400 mt-2">
-            Kevin's commercial deal analysis and post-disaster rebuild management
+          <p className="section-subtitle">
+            Kevin Agent - Investment analysis and portfolio management
           </p>
         </div>
         <div className="flex gap-4">
           <button 
-            onClick={runMarketAnalysis}
+            onClick={runInvestmentAnalysis}
             className="neon-button px-6 py-3 rounded-lg font-medium"
           >
-            MARKET ANALYSIS
+            RUN ANALYSIS
           </button>
           <button 
-            onClick={runROIProjection}
-            className="bg-green-500/20 border border-green-400 text-green-400 px-6 py-3 rounded-lg font-medium hover:bg-green-500/30 transition-colors"
+            onClick={generateInvestmentReport}
+            className="bg-green-500/20 border border-green-500 text-green-400 px-6 py-3 rounded-lg font-medium hover:bg-green-500/30 transition-colors"
           >
-            ROI PROJECTION
+            GENERATE REPORT
           </button>
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-green-400 mb-2">
-              {deals.length}
-            </div>
-            <div className="text-sm text-gray-400">Active Deals</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-[#00FFFF] mb-2">
-              ${(getTotalValue() / 1000000).toFixed(1)}M
-            </div>
-            <div className="text-sm text-gray-400">Portfolio Value</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-purple-400 mb-2">
-              {getAverageROI().toFixed(1)}%
-            </div>
-            <div className="text-sm text-gray-400">Avg ROI Projection</div>
-          </div>
-        </div>
-        <div className="card-bg rounded-2xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-orbitron font-bold text-yellow-400 mb-2">
-              {getHighPriorityCount()}
-            </div>
-            <div className="text-sm text-gray-400">High Priority</div>
-          </div>
-        </div>
+      {/* Investment Metrics */}
+      <div className="stats-grid">
+        <KPIWidget
+          title="Total Investments"
+          value={investmentMetrics.totalInvestments}
+          icon={<PieChart className="w-5 h-5" />}
+          color="primary"
+        />
+        <KPIWidget
+          title="Portfolio Value"
+          value={investmentMetrics.totalValue}
+          format="currency"
+          trend="up"
+          icon={<DollarSign className="w-5 h-5" />}
+          color="success"
+        />
+        <KPIWidget
+          title="Average ROI"
+          value={investmentMetrics.averageROI}
+          format="percentage"
+          trend="up"
+          icon={<TrendingUp className="w-5 h-5" />}
+          color="success"
+        />
+        <KPIWidget
+          title="Active Investments"
+          value={investmentMetrics.activeInvestments}
+          trend="stable"
+          icon={<BarChart3 className="w-5 h-5" />}
+          color="warning"
+        />
       </div>
 
       {/* Agent Status */}
-      {agentStatus && (
-        <div className="card-bg rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-orbitron text-lg font-semibold text-white mb-2">
-                KEVIN CHEN - INVESTMENT AGENT
-              </h3>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${agentStatus.status === 'active' ? 'bg-green-400 animate-pulse' : agentStatus.status === 'idle' ? 'bg-yellow-400' : 'bg-gray-400'}`} />
-                  <span className="text-gray-300">{agentStatus.status?.toUpperCase()}</span>
-                </div>
-                <span className="text-gray-400">•</span>
-                <span className="text-gray-300">Last Activity: {agentStatus.last_execution}</span>
-                <span className="text-gray-400">•</span>
-                <span className="text-gray-300">Queue: {agentStatus.queue_size} items</span>
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-primary-500" />
+          KEVIN AGENT STATUS
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <AgentStatusCard 
+            agentId="investments" 
+            showDetails={true}
+            onAction={(action) => console.log('Investment agent action:', action)}
+          />
+          <div className="card-bg rounded-2xl p-6">
+            <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
+              RECENT ACTIVITIES
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <TrendingUp className="w-4 h-4 text-green-400" />
+                <span className="text-gray-300">Analyzed 5 new investment opportunities</span>
+                <span className="text-gray-500 ml-auto">10 min ago</span>
               </div>
-            </div>
-            <div className="text-right">
-              <div className="text-[#00FFFF] font-orbitron font-bold text-2xl">
-                {agentStatus.deals_analyzed_today || 0}
+              <div className="flex items-center gap-3 text-sm">
+                <PieChart className="w-4 h-4 text-blue-400" />
+                <span className="text-gray-300">Updated portfolio risk assessment</span>
+                <span className="text-gray-500 ml-auto">30 min ago</span>
               </div>
-              <div className="text-xs text-gray-400">Deals Analyzed Today</div>
+              <div className="flex items-center gap-3 text-sm">
+                <DollarSign className="w-4 h-4 text-yellow-400" />
+                <span className="text-gray-300">Generated ROI projections for Q4</span>
+                <span className="text-gray-500 ml-auto">1 hour ago</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <BarChart3 className="w-4 h-4 text-purple-400" />
+                <span className="text-gray-300">Completed market analysis report</span>
+                <span className="text-gray-500 ml-auto">2 hours ago</span>
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Investment Panel */}
-      <InvestmentPanel 
-        deals={deals}
-        onAnalysisComplete={setAnalysisResults}
-        analysisResults={analysisResults}
-        loading={loading}
-        setLoading={setLoading}
-      />
-
-      {/* Quick Actions */}
-      <div className="card-bg rounded-2xl p-6">
-        <h3 className="font-orbitron text-lg font-semibold text-white mb-4">
-          QUICK ACTIONS
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button 
-            onClick={runMarketAnalysis}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Market Analysis</div>
-          </button>
-          <button 
-            onClick={runROIProjection}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">ROI Projection</div>
-          </button>
-          <button 
-            onClick={runRiskAssessment}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Risk Assessment</div>
-          </button>
-          <button 
-            onClick={() => loadInvestmentData()}
-            className="neon-button p-4 rounded-lg text-center"
-          >
-            <div className="text-sm font-medium">Refresh Data</div>
-          </button>
-        </div>
+      {/* Investment Portfolio */}
+      <div>
+        <h2 className="font-orbitron text-xl font-semibold text-white mb-6 flex items-center gap-2">
+          <PieChart className="w-5 h-5 text-primary-500" />
+          INVESTMENT PORTFOLIO
+        </h2>
+        <InvestmentPanel 
+          investments={investments}
+          onInvestmentAction={handleInvestmentAction}
+        />
       </div>
     </div>
   )

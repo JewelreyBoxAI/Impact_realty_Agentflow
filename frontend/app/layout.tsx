@@ -1,15 +1,11 @@
 import React from 'react'
 import './globals.css'
-import { Inter, Orbitron } from 'next/font/google'
 import { Sidebar } from '@/components/Sidebar'
 import { TopNav } from '@/components/TopNav'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const orbitron = Orbitron({ subsets: ['latin'], variable: '--font-orbitron' })
-
 export const metadata = {
-  title: 'Impact Realty AI - Hierarchical Agent Platform',
-  description: 'Multi-agent orchestration for real estate operations',
+  title: 'Impact Realty AI - Multi-Agent Platform',
+  description: 'Hierarchical agent orchestration for real estate operations',
 }
 
 export default function RootLayout({
@@ -19,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.variable} ${orbitron.variable} font-sans bg-[#0C0F1A] text-white antialiased`}>
+      <body className="font-inter bg-background-primary text-white antialiased">
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
           <div className="flex-1 flex flex-col overflow-hidden">
